@@ -1,7 +1,7 @@
 from sklearn.base import clone
 from sklearn.model_selection import StratifiedKFold, cross_validate
 import xgboost as xgb
-from sklearn.metrics import mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error, root_mean_squared_error
 from typing import Tuple
 from scipy.stats.mstats import winsorize
 from sklearn.metrics import mean_absolute_error, r2_score, mean_squared_error
@@ -35,15 +35,14 @@ chp = pd.read_csv("housing.csv")
 # print(pd.get_dummies(chp['ocean_proximity']))
 
 # print(chp.drop('ocean_proximity', axis=1))
-chp2 = pd.get_dummies(chp, columns=['ocean_proximity'], drop_first=True)
+# chp2 = pd.get_dummies(chp, columns=['ocean_proximity'], drop_first=True)
 
 # print(chp2.columns)
 
 # remover o preço que vai ser previsto
-chp2 = chp2[['longitude', 'latitude', 'housing_median_age', 'total_rooms',
-             'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value', 'ocean_proximity_INLAND',
-             'ocean_proximity_ISLAND', 'ocean_proximity_NEAR BAY',
-             'ocean_proximity_NEAR OCEAN']]
+chp2 = chp[['longitude', 'latitude', 'housing_median_age', 'total_rooms',
+            'total_bedrooms', 'population', 'households', 'median_income', 'median_house_value',
+            'ocean_proximity']]
 
 # print(chp2.columns)
 
@@ -121,7 +120,7 @@ def identifyAndImputeOutliers(data: pd.DataFrame, column):
     limIn = Q1 - (IQR * 1.5)
     limSup = Q3 + (IQR * 1.5)
 
-    print(f"Limite Inferior: {limIn}, Limite Superior: {limSup}")
+    # print(f"Limite Inferior: {limIn}, Limite Superior: {limSup}")
 
     # Marcar outliers como NaN
     data.loc[(data[column] < limIn) | (data[column] > limSup), column] = np.nan
@@ -131,7 +130,7 @@ def identifyAndImputeOutliers(data: pd.DataFrame, column):
                          metric='nan_euclidean')
     data[[column]] = imputer.fit_transform(data[[column]])
 
-    print("Outliers tratados e valores imputados com sucesso.")
+    # print("Outliers tratados e valores imputados com sucesso.")
     # return data
 
 
@@ -177,62 +176,9 @@ def winsorizeOutliers(data: pd.DataFrame, column: str, limit=0.05):
     return data
 
 
-# KNNImputer: Melhor para manter a estrutura dos dados, ideal quando há relação entre variáveis.
-
-# Remoção: Adequado quando há poucos outliers e muitos dados.
-
-# Média, Mediana ou Moda: Simples e eficiente para pequenas quantidades de outliers.
-
-# Winsorization: Bom para manter os dados originais, limitando o impacto dos outliers.
-
-# Transformações: Ideal para dados com assimetria ou distribuição não normal.
-
-# Regressão: Funciona bem em conjuntos de dados com forte correlação entre variáveis.
-
-# chp2.hist(figsize=(16, 12), bins=50)
-# plt.show()
-
-# tratando os principais outliers
 # plotOutliers(chp2, 'total_bedrooms')
 identifyAndImputeOutliers(chp2, 'total_bedrooms')
 identifyAndImputeOutliers(chp2, 'total_rooms')
-
-# chp2.hist(figsize=(16, 12), bins=50)
-# plt.show()
-
-# print(chp2['total_bedrooms'].describe())
-# print(chp2['total_bedrooms'].isna().sum())
-
-# plt.figure(figsize=(8, 6))
-# plt.hist(chp2['total_bedrooms'], bins=50, color='blue', edgecolor='black')
-# plt.xlabel('Total Bedrooms')
-# plt.ylabel('Frequency')
-# plt.title('Distribution of Total Bedrooms')
-# plt.show()
-
-# chp2.boxplot(figsize=(16, 2))
-# plt.show()
-
-chp3 = chp2.dropna()
-# print(chp3.describe())
-# plt.figure(figsize=(16, 10))
-# sns.heatmap(chp3.corr(), annot=True, cmap="seismic")
-# plt.show()
-
-# plt.figure(figsize=(16, 10))
-# sns.scatterplot(x='latitude', y='longitude', data=chp3,
-#                 hue='median_house_value')
-# plt.show()
-
-print(chp3.columns)
-
-# plt.figure(figsize=(16, 10))
-# sns.pairplot(chp3[['housing_median_age', 'total_rooms',
-#                    'total_bedrooms', 'population', 'households', 'median_income',
-#                    'median_house_value']])
-# plt.show()
-
-# region Machine Learning
 
 
 def computeScaling(X) -> Tuple[np.ndarray, StandardScaler]:
@@ -251,23 +197,9 @@ def computeScaling(X) -> Tuple[np.ndarray, StandardScaler]:
     return X_scaled, scale
 
 
-# region Scaling
-X = chp3.drop("median_house_value", axis=1)
-y = chp3["median_house_value"]
+X = chp.drop("median_house_value", axis=1)
+y = chp["median_house_value"]
 
-# Exibindo as primeiras linhas de X e y sem escala
-print(f"X sem scale:\n{X.head()}")
-print(f"Y sem scale:\n{y.head()}")
-
-# Padronizando X e y
-X_scaled, scaleX = computeScaling(X)
-y_scaled, scaleY = computeScaling(np.reshape(y, (-1, 1)))
-
-# Exibindo as primeiras linhas de X e y após escala
-# Mostrando apenas as primeiras 5 linhas para visualização
-print(f"X com scale:\n{X_scaled[:5]}")
-# Mostrando apenas as primeiras 5 linhas para visualização
-print(f"Y com scale:\n{y_scaled[:5]}")
 
 # endregion Scaling
 
@@ -290,126 +222,51 @@ def splitTrainTestSets(X: np.ndarray, y: np.ndarray, testSize: float) -> Tuple[n
     return XTrain, XTest, yTrain, yTest
 
 
-XTrain, XTest, yTrain, yTest = splitTrainTestSets(
-    X_scaled, y_scaled, 0.3)  # Usando X_scaled e y_scaled
+houses = X.select_dtypes(exclude=np.number).columns.tolist()
 
-# Exibindo a forma dos dados de treino e teste
-print(f"XTrain shape: {XTrain.shape}, XTest shape: {XTest.shape}")
-print(f"yTrain shape: {yTrain.shape}, yTest shape: {yTest.shape}")
-
-# endregion Train e test split
-
-# region Linear Regression
-
-# linear = LinearRegression()
-# linear.fit(XTrain, yTrain)
-# predicao_linear = linear.predict(XTest)
-
-# # Desescalonando as previsões
-# predicao_linear_desescalonada = scaleY.inverse_transform(predicao_linear)
-
-# # Desescalonando os valores reais (yTest)
-# yTest_desescalonado = scaleY.inverse_transform(yTest)
-
-# # Calculando as métricas de erro com os valores desescalonados
-# mae = mean_absolute_error(yTest_desescalonado, predicao_linear_desescalonada)
-# mse = mean_squared_error(yTest_desescalonado, predicao_linear_desescalonada)
-# rmse = np.sqrt(mse)
-
-# # Exibindo as métricas
-# print(f"MAE: {mae}")
-# print(f"MSE: {mse}")
-# print(f"RMSE: {rmse}")
-
-# # Avaliação do modelo
-# print(f"R² (score): {linear.score(XTest, yTest)}")
-# print(
-#     f"R² (manual): {r2_score(yTest_desescalonado, predicao_linear_desescalonada)}")
-
-# print(f"Previsões desescalonadas: {predicao_linear_desescalonada[:5]}")
-# print(f"Valores reais desescalonados: {yTest_desescalonado[:5]}")
-
-# endregion
+for col in houses:
+    X[col] = X[col].astype('category')
 
 
-# region Todos os modelos
-# Definindo os modelos
-modelos = {
-    'LinearRegression': LinearRegression(),
-    'RandomForestRegressor': RandomForestRegressor(),
-    'ElasticNet': ElasticNet(),
-    'SVR': SVR(),
-    'Ridge': Ridge(),
-    'BayesianRidge': BayesianRidge()
-}
+X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=1)
 
-# Listas para armazenar os resultados
-modelo_rmse = []
-modelo_mae = []
-modelo_mse = []
-modelo_r2 = []
-modelo_nomes = []
-modelo_erro_percentual = []
-modelo_acuracia = []
 
-# Iterando sobre os modelos
-# Iterando sobre os modelos
-for nome, modelo in modelos.items():
-    # Treinando o modelo
-    # Usando .ravel() para garantir que y seja 1D
-    fit_modelo = modelo.fit(XTrain, yTrain.ravel())
+# Create regression matrices
+dtrain_reg = xgb.DMatrix(X_train, y_train, enable_categorical=True)
+dtest_reg = xgb.DMatrix(X_test, y_test, enable_categorical=True)
 
-    # Fazendo previsões
-    predicao = fit_modelo.predict(XTest)
+# Define hyperparameters
+params = {"objective": "reg:squarederror", "device": "cuda"}
+evals = [(dtrain_reg, "train"), (dtest_reg, "validation")]
 
-    # Desescalonando as previsões e yTest
-    predicao_desescalonada = scaleY.inverse_transform(
-        predicao.reshape(-1, 1))  # reshape para garantir a forma correta
-    yTest_desescalonado = scaleY.inverse_transform(yTest)
+n = 200000
+model = xgb.train(
+    params=params,
+    dtrain=dtrain_reg,
+    num_boost_round=n,
+    evals=evals,
+    verbose_eval=50,
+    # Activate early stopping
+    early_stopping_rounds=50,
+)
 
-    # Calculando as métricas de erro
-    mae = mean_absolute_error(yTest_desescalonado, predicao_desescalonada)
-    mse = mean_squared_error(yTest_desescalonado, predicao_desescalonada)
-    rmse = np.sqrt(mse)
-    r2 = r2_score(yTest_desescalonado, predicao_desescalonada)
 
-    # Calculando a porcentagem de erro
-    erro_percentual = np.abs(
-        (yTest_desescalonado - predicao_desescalonada) / yTest_desescalonado) * 100
-    erro_percentual_medio = np.mean(erro_percentual)
+preds = model.predict(dtest_reg)
 
-    # Definindo um limite de erro de 10% para considerar uma previsão como "acertada"
-    erro_limite = 10
-    acertos = np.sum(erro_percentual <= erro_limite)
-    porcentagem_acertos = (acertos / len(erro_percentual)) * 100
+rmse = root_mean_squared_error(y_test, preds)
 
-    # Armazenando os resultados
-    modelo_r2.append(r2)
-    modelo_rmse.append(rmse)
-    modelo_mae.append(mae)
-    modelo_mse.append(mse)
-    modelo_nomes.append(nome)
-    # Adicionando erro percentual
-    modelo_erro_percentual.append(erro_percentual_medio)
-    modelo_acuracia.append(porcentagem_acertos)  # Adicionando acurácia
+mae = mean_absolute_error(y_test, preds)
+print(f"RMSE of the base model: {rmse:.3f}")
+print(f"MAE of the base model: {mae:.3f}")
 
-# Criando o DataFrame para exibir os resultados
-resultado_final = pd.DataFrame({
-    'Modelo': modelo_nomes,
-    'R2': modelo_r2,
-    'MAE': modelo_mae,
-    'MSE': modelo_mse,
-    'RMSE': modelo_rmse,
-    'Erro Percentual Médio': modelo_erro_percentual,  # Exibindo o erro percentual
-    'Acurácia (%)': modelo_acuracia  # Exibindo a acurácia
-})
 
-# Ordenando pelo RMSE e exibindo os resultados
-resultado_final = resultado_final.sort_values(by='RMSE')
-print(resultado_final)
+# results = xgb.cv(
+#     params, dtrain_reg,
+#     num_boost_round=n,
+#     nfold=5,
+#     early_stopping_rounds=20
+# )
 
-# endregion
+# best_rmse = results['test-rmse-mean'].min()
 
-# endregion
-
-# endregion
+# print(best_rmse)
